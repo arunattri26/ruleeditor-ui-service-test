@@ -1,4 +1,4 @@
-import { getFullName1 } from './commonFunctions.js';
+import { getFullName } from './commonFunctions.js';
 
 /**
  * Custom submit function
