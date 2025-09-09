@@ -351,3 +351,22 @@ export function attachEventListners(main) {
 const observer = new MutationObserver(instrumentForms);
 observer.observe(document, { childList: true, subtree: true, attributeFilter: ['form'] });
 loadCSS(`${window.hlx.codeBasePath}/scripts/form-editor-support.css`);
+
+function enableRuleEditorExtension() {
+  const head = document.getElementsByTagName('head')[0];
+  const meta = document.createElement('meta');
+  meta.name = 'urn:adobe:aue:config:extensions';
+  // const params = new URLSearchParams(window.location.hash.substring(1)); // Remove the leading '#' character
+  const params = new URLSearchParams(window.location.search);
+  console.log('Rule editor extension Params: ', params);
+  const version = params.get('livecycle-ruleeditor-ui-service_version');
+  const domain = params.get('livecycle-ruleeditor-ui-service_domain') || 'https://experience.adobe.com';
+  if (version) {
+    meta.content = `${domain}/solutions/livecycle-ruleeditor-ui-service/static-assets/resources/universal_editor.html?livecycle-ruleeditor-ui-service_version=${version}`;
+  } else {
+    meta.content = `${domain}/solutions/livecycle-ruleeditor-ui-service/static-assets/resources/universal_editor.html`;
+  }
+  console.log('Adding meta tag for rule editor extension: ', meta.content);
+  head.appendChild(meta);
+}
+enableRuleEditorExtension();
