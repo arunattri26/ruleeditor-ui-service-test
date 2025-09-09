@@ -9,4 +9,5 @@ function getFullName(firstname, lastname) {
   return `${firstname} ${lastname}`.trim();
 }
 
+// eslint-disable-next-line import/prefer-default-export
 export {getFullName};
