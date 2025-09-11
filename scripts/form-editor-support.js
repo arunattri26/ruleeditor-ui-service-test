@@ -360,7 +360,7 @@ function enableRuleEditorExtension() {
   const params = new URLSearchParams(window.location.search);
   console.log('Rule editor extension Params: ', params);
   let version = params.get('livecycle-ruleeditor-ui-service_version');
-  version = 'PR-261-8000a90cf0936bd4634a441d3beefd6d03201931';
+  version = 'PR-261-a74c1978e15b87e73da33e3aea28878801e0976a';
   const domain = params.get('livecycle-ruleeditor-ui-service_domain') || 'https://experience.adobe.com';
   if (version) {
     meta.content = `${domain}/solutions/livecycle-ruleeditor-ui-service/static-assets/resources/universal_editor.html?livecycle-ruleeditor-ui-service_version=${version}`;
