@@ -1,4 +1,4 @@
-import { getFullName } from './commonFunctions.js';
+// import { getFullName } from './commonFunctions.js';
 
 /**
  * Custom submit function
@@ -34,4 +34,5 @@ function days(endDate, startDate) {
 }
 
 // eslint-disable-next-line import/prefer-default-export
-export { getFullName, days, submitFormArrayToString };
+// export { getFullName, days, submitFormArrayToString };
+export { days, submitFormArrayToString };
