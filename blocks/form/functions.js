@@ -5,13 +5,13 @@ import { getFullName } from './commonFunctions.js';
  * @param {scope} globals
  */
 function submitFormArrayToString(globals) {
-  const data = globals.functions.exportData();
+  const data = globals?.functions?.exportData?.() ?? {};
   Object.keys(data).forEach((key) => {
     if (Array.isArray(data[key])) {
       data[key] = data[key].join(',');
     }
   });
-  globals.functions.submitForm(data, true, 'application/json');
+  globals?.functions?.submitForm?.(data, true, 'application/json');
 }
 
 /**
@@ -64,7 +64,7 @@ function retryHandler(requestFn) {
 
       return requestFn(requestOptions)
           .then(function(response) {
-              if (response && response.status >= 400) {
+              if (response?.status >= 400) {
                   console.warn('Request failed with status ' + response.status);
                   throw new Error('Request failed with status ' + response.status);
               }
