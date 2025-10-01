@@ -20,7 +20,7 @@
 
 /*
  *  Package: @aemforms/af-core
- *  Version: 0.22.150
+ *  Version: 0.22.153
  */
 import { propertyChange, ExecuteRule, Initialize, RemoveItem, Change, FormLoad, FieldChanged, ValidationComplete, Valid, Invalid, SubmitSuccess, CustomEvent, RequestSuccess, RequestFailure, SubmitError, Submit, Save, Reset, SubmitFailure, Focus, RemoveInstance, AddInstance, AddItem, Click } from './afb-events.js';
 import Formula from '../formula/index.js';
@@ -49,7 +49,8 @@ const ConstraintType = Object.freeze({
     MAX_ITEMS_MISMATCH: 'maxItemsMismatch',
     EXPRESSION_MISMATCH: 'expressionMismatch',
     EXCLUSIVE_MAXIMUM_MISMATCH: 'exclusiveMaximumMismatch',
-    EXCLUSIVE_MINIMUM_MISMATCH: 'exclusiveMinimumMismatch'
+    EXCLUSIVE_MINIMUM_MISMATCH: 'exclusiveMinimumMismatch',
+    ENUM_MISMATCH: 'enumMismatch'
 });
 const constraintKeys = Object.freeze({
     pattern: ConstraintType.PATTERN_MISMATCH,
@@ -68,7 +69,8 @@ const constraintKeys = Object.freeze({
     maxItems: ConstraintType.MAX_ITEMS_MISMATCH,
     validationExpression: ConstraintType.EXPRESSION_MISMATCH,
     exclusiveMinimum: ConstraintType.EXCLUSIVE_MINIMUM_MISMATCH,
-    exclusiveMaximum: ConstraintType.EXCLUSIVE_MAXIMUM_MISMATCH
+    exclusiveMaximum: ConstraintType.EXCLUSIVE_MAXIMUM_MISMATCH,
+    enum: ConstraintType.ENUM_MISMATCH
 });
 const defaultConstraintTypeMessages = Object.freeze({
     [ConstraintType.PATTERN_MISMATCH]: 'Please match the format requested.',
@@ -87,7 +89,8 @@ const defaultConstraintTypeMessages = Object.freeze({
     [ConstraintType.MAX_ITEMS_MISMATCH]: 'Specify a number of items equal to or less than ${0}.',
     [ConstraintType.EXPRESSION_MISMATCH]: 'Please enter a valid value.',
     [ConstraintType.EXCLUSIVE_MINIMUM_MISMATCH]: 'Value must be greater than ${0}.',
-    [ConstraintType.EXCLUSIVE_MAXIMUM_MISMATCH]: 'Value must be less than ${0}.'
+    [ConstraintType.EXCLUSIVE_MAXIMUM_MISMATCH]: 'Value must be less than ${0}.',
+    [ConstraintType.ENUM_MISMATCH]: 'Please select a value from the allowed options.'
 });
 let customConstraintTypeMessages = {};
 const getConstraintTypeMessages = () => {
@@ -376,6 +379,22 @@ class DataValue {
     $bindToField(field) {
         if (this.$_fields.indexOf(field) === -1) {
             this.$_fields.push(field);
+            this._checkForTypeConflicts(field);
+        }
+    }
+    _checkForTypeConflicts(newField) {
+        if (this.$_fields.length <= 1) {
+            return;
+        }
+        const newFieldType = newField.type;
+        const conflictingFields = this.$_fields.filter(existingField => existingField &&
+            existingField !== newField &&
+            existingField.type !== newFieldType);
+        if (conflictingFields.length > 0) {
+            const conflictDetails = conflictingFields.map(field => `Field "${field.id}" (${field.type})`).join(', ');
+            console.error('Type conflict detected: Multiple fields with same dataRef have different types. ' +
+                `New field '${newField.id}' (${newFieldType}) conflicts with: ${conflictDetails}. ` +
+                `DataRef: ${this.$name}`);
         }
     }
     $convertToDataValue() {
@@ -1404,6 +1423,9 @@ const addOnly = (includeOrExclude) => (...fieldTypes) => (target, propertyKey, d
     const set = descriptor.set;
     if (set != undefined) {
         descriptor.set = function (value) {
+            if (this === this._ruleNode) {
+                console.error(`Property '${propertyKey}' is being set through a proxy, which is not supported. Please use globals.functions.setProperty instead.`);
+            }
             if (fieldTypes.indexOf(this.fieldType) > -1 === includeOrExclude) {
                 set.call(this, value);
             }
@@ -1660,16 +1682,16 @@ class BaseNode {
         this.form.getEventQueue().runPendingQueue();
     }
     withDependencyTrackingControl(disableDependencyTracking, callback) {
-        const currentDependencyTracking = this.form.ruleEngine.getDependencyTracking();
+        const currentDependencyTracking = this.form?.ruleEngine.getDependencyTracking();
         if (disableDependencyTracking) {
-            this.form.ruleEngine.setDependencyTracking(false);
+            this.form?.ruleEngine.setDependencyTracking(false);
         }
         try {
             return callback();
         }
         finally {
             if (disableDependencyTracking) {
-                this.form.ruleEngine.setDependencyTracking(currentDependencyTracking);
+                this.form?.ruleEngine.setDependencyTracking(currentDependencyTracking);
             }
         }
     }
@@ -1871,7 +1893,7 @@ class BaseNode {
         else {
             qn = `${parent.qualifiedName}.${this.name}`;
         }
-        if (!this._isAncestorRepeatable()) {
+        if (!this.repeatable && !this._isAncestorRepeatable()) {
             this[qualifiedName] = qn;
         }
         return qn;
@@ -2853,7 +2875,7 @@ const request = async (context, uri, httpVerb, payload, success, error, headers)
         method: httpVerb
     };
     let inputPayload;
-    let encryptOutput = {};
+    let encryptOutput = {}, cryptoMetadata = null;
     try {
         if (payload instanceof Promise) {
             payload = await payload;
@@ -2867,6 +2889,7 @@ const request = async (context, uri, httpVerb, payload, success, error, headers)
         encryptOutput = { ...payload };
         headers = { ...payload.headers };
         payload = payload.body;
+        cryptoMetadata = payload.cryptoMetadata;
         inputPayload = payload;
     }
     if (payload && payload instanceof FileObject && payload.data instanceof File) {
@@ -2931,6 +2954,7 @@ const request = async (context, uri, httpVerb, payload, success, error, headers)
         response.originalRequest = {
             url: endpoint,
             method: httpVerb,
+            ...(cryptoMetadata && { cryptoMetadata }),
             ...encryptOutput
         };
         response.submitter = targetField;
@@ -3429,10 +3453,11 @@ class FunctionRuntimeImpl {
                             throw error;
                         }
                         let finalHeaders = {};
-                        let finalBody = {};
+                        let finalBody = {}, finalCryptoMetadata = null;
                         if (args.length === 5) {
                             finalBody = payload.body || {};
                             finalHeaders = payload.headers || {};
+                            finalCryptoMetadata = payload.cryptoMetadata;
                         }
                         else {
                             finalBody = payload || {};
@@ -3452,7 +3477,7 @@ class FunctionRuntimeImpl {
                                 };
                             }
                         }
-                        const finalPayload = { 'body': finalBody, 'headers': finalHeaders };
+                        const finalPayload = { 'body': finalBody, 'headers': finalHeaders, ...(finalCryptoMetadata && { cryptoMetadata: finalCryptoMetadata }) };
                         try {
                             const response = await request(interpreter.globals, uri, httpVerb, finalPayload, success, errorFn, finalHeaders);
                             return response;
@@ -3684,6 +3709,57 @@ class FunctionRuntimeImpl {
                     const now = new Date(Date.now());
                     const _today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
                     return _today / MS_IN_DAY;
+                },
+                _signature: []
+            },
+            formatInput: {
+                _func: (args) => {
+                    const input = args[0];
+                    const format = args[1];
+                    if (!input || !format) {
+                        return input;
+                    }
+                    const inputStr = String(input).replace(/\D/g, '');
+                    switch (String(format).toLowerCase()) {
+                        case 'phonenumber': {
+                            if (inputStr.length >= 10) {
+                                const areaCode = inputStr.substring(0, 3);
+                                const firstThree = inputStr.substring(3, 6);
+                                const lastFour = inputStr.substring(6, 10);
+                                return `(${areaCode}) ${firstThree}-${lastFour}`;
+                            }
+                            else if (inputStr.length >= 7) {
+                                const firstThree = inputStr.substring(0, 3);
+                                const lastFour = inputStr.substring(3, 7);
+                                return `(${firstThree}) ${lastFour}`;
+                            }
+                            return inputStr;
+                        }
+                        case 'socialsecuritynumber': {
+                            if (inputStr.length >= 9) {
+                                const firstThree = inputStr.substring(0, 3);
+                                const middleTwo = inputStr.substring(3, 5);
+                                const lastFour = inputStr.substring(5, 9);
+                                return `${firstThree}-${middleTwo}-${lastFour}`;
+                            }
+                            return inputStr;
+                        }
+                        case 'email-alphanumeric': {
+                            const alphanumeric = String(input).replace(/[^a-zA-Z0-9]/g, '');
+                            if (alphanumeric.length > 0) {
+                                return `${alphanumeric}@example.com`;
+                            }
+                            return input;
+                        }
+                        case 'zipcode': {
+                            if (inputStr.length >= 5) {
+                                return inputStr.substring(0, 5);
+                            }
+                            return inputStr;
+                        }
+                        default:
+                            return input;
+                    }
                 },
                 _signature: []
             }
@@ -4776,10 +4852,10 @@ class Field extends Scriptable {
         if (this._jsonModel.enforceEnum === true && value != null) {
             const fn = constraints.enum;
             if (value instanceof Array && this.isArrayType()) {
-                return value.every(x => fn(this.enum || [], x).valid);
+                return value.every(x => fn(this._jsonModel.enum || [], x).valid);
             }
             else {
-                return fn(this.enum || [], value).valid;
+                return fn(this._jsonModel.enum || [], value).valid;
             }
         }
         return true;
