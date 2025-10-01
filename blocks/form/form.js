@@ -316,7 +316,16 @@ export async function generateFormRendition(panel, container, formId, getItems =
   });
 
   const children = await Promise.all(promises);
-  container.append(...children.filter((_) => _ != null));
+  const validChildren = children.filter((_) => _ != null);
+  
+  // Sort children by their data-index and append in correct order
+  validChildren.sort((a, b) => {
+    const indexA = parseInt(a.dataset?.index || '0', 10);
+    const indexB = parseInt(b.dataset?.index || '0', 10);
+    return indexA - indexB;
+  });
+  
+  container.append(...validChildren);
   decoratePanelContainer(panel, container);
   await componentDecorator(container, panel, null, formId);
 }
