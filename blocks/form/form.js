@@ -318,14 +318,19 @@ export async function generateFormRendition(panel, container, formId, getItems =
   const children = await Promise.all(promises);
   const validChildren = children.filter((_) => _ != null);
   
-  // Sort children by their data-index and append in correct order
-  validChildren.sort((a, b) => {
+  // Combine existing children with new children and sort by data-index
+  const existingChildren = Array.from(container.children);
+  const allChildren = [...existingChildren, ...validChildren];
+  
+  // Sort all children by their data-index
+  allChildren.sort((a, b) => {
     const indexA = parseInt(a.dataset?.index || '0', 10);
     const indexB = parseInt(b.dataset?.index || '0', 10);
     return indexA - indexB;
   });
   
-  container.append(...validChildren);
+  // Clear container and append all children in correct order
+  container.replaceChildren(...allChildren);
   decoratePanelContainer(panel, container);
   await componentDecorator(container, panel, null, formId);
 }
