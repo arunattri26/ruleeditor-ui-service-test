@@ -318,19 +318,38 @@ export async function generateFormRendition(panel, container, formId, getItems =
   const children = await Promise.all(promises);
   const validChildren = children.filter((_) => _ != null);
   
-  // Combine existing children with new children and sort by data-index
-  const existingChildren = Array.from(container.children);
-  const allChildren = [...existingChildren, ...validChildren];
-  
-  // Sort all children by their data-index
-  allChildren.sort((a, b) => {
-    const indexA = parseInt(a.dataset?.index || '0', 10);
-    const indexB = parseInt(b.dataset?.index || '0', 10);
-    return indexA - indexB;
-  });
-  
-  // Clear container and append all children in correct order
-  container.replaceChildren(...allChildren);
+  if (validChildren.length > 0) {
+    // Get the minimum index from new children
+    const newChildrenIndices = validChildren.map(child => parseInt(child.dataset?.index || '0', 10));
+    const minNewIndex = Math.min(...newChildrenIndices);
+    
+    // Update existing children indices: increment by 1 if their index >= minNewIndex
+    const existingChildren = Array.from(container.children);
+    existingChildren.forEach(child => {
+      if (child.dataset?.index !== undefined) {
+        const currentIndex = parseInt(child.dataset.index, 10);
+        if (currentIndex >= minNewIndex) {
+          child.dataset.index = (currentIndex + 1).toString();
+        }
+      }
+    });
+    
+    // Combine existing children with new children and sort by data-index
+    const allChildren = [...existingChildren, ...validChildren];
+    
+    // Sort all children by their data-index
+    allChildren.sort((a, b) => {
+      const indexA = parseInt(a.dataset?.index || '0', 10);
+      const indexB = parseInt(b.dataset?.index || '0', 10);
+      return indexA - indexB;
+    });
+    
+    // Clear container and append all children in correct order
+    container.replaceChildren(...allChildren);
+  } else {
+    // No new children, just append existing behavior
+    container.append(...validChildren);
+  }
   decoratePanelContainer(panel, container);
   await componentDecorator(container, panel, null, formId);
 }

@@ -211,7 +211,26 @@ async function fieldChanged(payload, form, generateFormRendition) {
       case 'items':
         if (currentValue === null) {
           const removeId = prevValue.id;
-          field?.querySelector(`#${removeId}`)?.remove();
+          const elementToRemove = field?.querySelector(`#${removeId}`);
+          const removedIndex = elementToRemove ? parseInt(elementToRemove.dataset?.index || '0', 10) : -1;
+          
+          // Remove the element
+          elementToRemove?.remove();
+          
+          // Update indices of remaining elements: decrement by 1 if their index > removedIndex
+          if (removedIndex >= 0) {
+            const repeatWrapper = field?.querySelector('.repeat-wrapper');
+            if (repeatWrapper) {
+              Array.from(repeatWrapper.children).forEach(child => {
+                if (child.dataset?.index !== undefined) {
+                  const currentIndex = parseInt(child.dataset.index, 10);
+                  if (currentIndex > removedIndex) {
+                    child.dataset.index = (currentIndex - 1).toString();
+                  }
+                }
+              });
+            }
+          }
         } else {
           const promise = generateFormRendition({ items: [currentValue] }, field?.querySelector('.repeat-wrapper'), form.dataset?.id);
           renderPromises[currentValue?.qualifiedName] = promise;
